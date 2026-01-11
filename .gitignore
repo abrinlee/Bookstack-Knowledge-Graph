@@ -1,0 +1,23 @@
+# Secrets and credentials
+secrets/config.php
+secrets/config.js
+
+# Backup files
+*.backup.*
+
+# Claude Code
+.claude/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

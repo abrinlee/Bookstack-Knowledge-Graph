@@ -1,0 +1,1795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>BookStack Second Brain Visualization</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="secrets/config.js"></script>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --bg-card: #020617;
+            --accent: #38bdf8;
+            --text-main: #e5e7eb;
+            --text-soft: #9ca3af;
+            --text-muted: #6b7280;
+            --border-soft: rgba(148,163,184,0.35);
+            --ok: #4ade80;
+            --error: #ef4444;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            min-height: 100vh;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: system-ui, sans-serif;
+            background: radial-gradient(circle at top left, #1d283a 0, #020617 52%, #000 100%);
+            color: var(--text-main);
+            padding: 20px;
+            overflow: hidden;
+        }
+
+        .page {
+            width: 100%;
+            height: 100%;
+            max-width: 1400px;
+            background: rgba(15,23,42,0.92);
+            backdrop-filter: blur(18px);
+            border-radius: 28px;
+            box-shadow: 0 30px 80px rgba(15,23,42,0.85), 0 0 0 1px rgba(148,163,184,0.45);
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            overflow: hidden;
+        }
+
+        .badge {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.16em;
+            padding: 3px 9px;
+            border-radius: 999px;
+            border: 1px solid rgba(96,165,250,0.5);
+            background: radial-gradient(circle at top left, rgba(56,189,248,0.20), rgba(15,23,42,0.9));
+            color: #e0f2fe;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+
+        .badge-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 999px;
+            background: var(--ok);
+            box-shadow: 0 0 0 4px rgba(34,197,94,0.25);
+        }
+
+        h1 {
+            font-size: clamp(18px, 4vw, 24px);
+            font-weight: 650;
+            margin-bottom: 12px;
+            line-height: 1.2;
+        }
+
+        #controls {
+            background: rgba(15,23,42,0.98);
+            padding: 16px;
+            border-radius: 16px;
+            border: 1px solid var(--border-soft);
+            flex-shrink: 0;
+        }
+
+        .controls-row {
+            display: flex;
+            gap: 12px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+        }
+
+        input {
+            padding: 10px 14px;
+            font-size: 13px;
+            border: 1px solid var(--border-soft);
+            border-radius: 8px;
+            background: rgba(15,23,42,0.98);
+            color: var(--text-main);
+            flex: 1;
+            min-width: 220px;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        input::placeholder {
+            color: var(--text-muted);
+        }
+
+        button {
+            padding: 8px 16px;
+            border-radius: 999px;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.18em;
+            cursor: pointer;
+            border: 1px solid rgba(148,163,184,0.5);
+            background: rgba(15,23,42,0.98);
+            color: var(--text-soft);
+            transition: all 160ms;
+        }
+
+        button:hover {
+            border-color: rgba(148,163,184,0.8);
+            color: var(--text-main);
+        }
+
+        #visualization {
+            background: rgba(15,23,42,0.98);
+            border-radius: 16px;
+            border: 1px solid var(--border-soft);
+            width: 100%;
+            flex: 1;
+            min-height: 0;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+
+        .node circle {
+            stroke: var(--accent);
+            stroke-width: 2px;
+            cursor: pointer;
+            transition: all 160ms;
+        }
+
+        .node circle:hover {
+            stroke-width: 3px;
+            filter: brightness(1.2);
+        }
+
+        .node.pinned circle {
+            stroke: var(--ok);
+            stroke-width: 3px;
+            stroke-dasharray: 5, 3;
+        }
+
+        .node text {
+            font-size: 12px;
+            pointer-events: none;
+            text-anchor: middle;
+            fill: var(--text-main);
+            font-weight: 500;
+        }
+
+        .link {
+            stroke: var(--accent);
+            stroke-opacity: 0.4;
+            fill: none;
+            marker-end: url(#arrowhead);
+            transition: all 160ms;
+        }
+
+        .link:hover {
+            stroke-opacity: 0.8;
+        }
+
+        .link-label {
+            font-size: 10px;
+            fill: var(--text-soft);
+            text-anchor: middle;
+        }
+
+        #status {
+            margin-top: 10px;
+            padding: 12px;
+            border-radius: 8px;
+            background: rgba(15,23,42,0.6);
+            border: 1px solid var(--border-soft);
+            font-size: 13px;
+        }
+
+        .error {
+            color: var(--error);
+            background: rgba(239,68,68,0.1);
+            border-color: rgba(239,68,68,0.3);
+        }
+
+        .success {
+            color: var(--ok);
+        }
+
+        /* Mobile Responsive Styles */
+        @media (max-width: 768px) {
+            body {
+                padding: 8px;
+            }
+
+            .page {
+                padding: 12px;
+                border-radius: 20px;
+                gap: 12px;
+            }
+
+            h1 {
+                font-size: 20px;
+                margin-bottom: 8px;
+            }
+
+            .badge {
+                font-size: 10px;
+                padding: 2px 8px;
+            }
+
+            #controls {
+                padding: 12px;
+            }
+
+            #breadcrumb {
+                font-size: 11px !important;
+                margin: 8px 0 !important;
+            }
+
+            .controls-row {
+                gap: 8px;
+            }
+
+            button {
+                padding: 6px 12px;
+                font-size: 10px;
+                flex: 1;
+            }
+
+            #status {
+                font-size: 11px;
+                padding: 8px;
+            }
+
+            #visualization {
+                border-radius: 12px;
+            }
+
+            .node text {
+                font-size: 10px !important;
+            }
+
+            .link-label {
+                font-size: 8px !important;
+            }
+        }
+
+        /* Touch-friendly interactions */
+        @media (hover: none) and (pointer: coarse) {
+            .node {
+                cursor: pointer;
+            }
+
+            .node circle {
+                stroke-width: 3px;
+            }
+        }
+
+        /* Zoom controls */
+        .zoom-controls {
+            position: absolute;
+            bottom: 24px;
+            right: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 10;
+        }
+
+        .zoom-btn {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: rgba(15,23,42,0.95);
+            border: 1px solid var(--border-soft);
+            color: var(--text-main);
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 160ms;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        .zoom-btn:hover {
+            background: rgba(15,23,42,1);
+            border-color: var(--accent);
+            color: var(--accent);
+            transform: scale(1.05);
+        }
+
+        .zoom-btn:active {
+            transform: scale(0.95);
+        }
+
+        @media (max-width: 768px) {
+            .zoom-controls {
+                bottom: 16px;
+                right: 16px;
+            }
+
+            .zoom-btn {
+                width: 40px;
+                height: 40px;
+                font-size: 18px;
+            }
+        }
+
+        /* Keyword Filter Panel */
+        #keywordPanel {
+            background: rgba(15,23,42,0.98);
+            border-radius: 16px;
+            border: 1px solid var(--border-soft);
+            padding: 16px;
+            margin-top: 12px;
+            max-height: 250px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        #keywordPanel.visible {
+            display: block;
+        }
+
+        .keyword-header {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-soft);
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+
+        .keyword-list {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: flex-start;
+        }
+
+        .keyword-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px;
+            border-radius: 6px;
+            background: rgba(15,23,42,0.5);
+            transition: background 160ms;
+            min-width: 180px;
+            flex-shrink: 0;
+        }
+
+        .keyword-item:hover {
+            background: rgba(15,23,42,0.8);
+        }
+
+        .keyword-checkbox {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: var(--accent);
+        }
+
+        .keyword-color {
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            border: 1px solid var(--border-soft);
+            cursor: pointer;
+            transition: transform 160ms;
+        }
+
+        .keyword-color:hover {
+            transform: scale(1.1);
+        }
+
+        .keyword-label {
+            flex: 1;
+            font-size: 12px;
+            color: var(--text-main);
+            cursor: pointer;
+        }
+
+        .keyword-count {
+            font-size: 11px;
+            color: var(--text-muted);
+            background: rgba(148,163,184,0.2);
+            padding: 2px 6px;
+            border-radius: 999px;
+        }
+
+        @media (max-width: 768px) {
+            #keywordPanel {
+                max-height: 200px;
+                padding: 12px;
+            }
+        }
+
+        /* Collapsible Controls */
+        #controls {
+            transition: height 300ms ease-in-out;
+        }
+
+        #controls.collapsed {
+            height: 48px;
+            overflow: hidden;
+        }
+
+        #controls.collapsed #controls-expanded {
+            display: none;
+        }
+
+        #controls.expanded #controls-collapsed {
+            display: none;
+        }
+
+        #controls-collapsed {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 12px 16px;
+        }
+
+        #breadcrumb-mini {
+            flex: 1;
+            font-size: 13px;
+            color: var(--text-soft);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .version-mini {
+            font-size: 11px;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+
+        #toggleControls {
+            padding: 4px 12px;
+            min-width: auto;
+            font-size: 14px;
+        }
+
+        /* Modal Styling */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-backdrop {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            cursor: pointer;
+        }
+
+        .modal-content {
+            position: relative;
+            background: rgba(15,23,42,0.98);
+            border-radius: 16px;
+            border: 1px solid var(--border-soft);
+            width: 90%;
+            max-width: 700px;
+            min-width: 400px;
+            max-height: 80vh;
+            min-height: 400px;
+            height: 600px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+            animation: modalFadeIn 200ms ease-out;
+            resize: both;
+            overflow: hidden;
+        }
+
+        @keyframes modalFadeIn {
+            from {
+                opacity: 0;
+                transform: scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px;
+            border-bottom: 1px solid var(--border-soft);
+        }
+
+        .modal-header h3 {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-soft);
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .modal-header button {
+            font-size: 24px;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            min-width: auto;
+            border-radius: 50%;
+            line-height: 1;
+        }
+
+        .modal-body {
+            padding: 16px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .sort-toggle {
+            display: flex;
+            gap: 4px;
+            background: rgba(148,163,184,0.2);
+            border-radius: 6px;
+            padding: 2px;
+        }
+
+        .sort-toggle button {
+            padding: 6px 14px;
+            font-size: 11px;
+            min-width: 70px;
+            border-radius: 4px;
+            background: transparent;
+            border: none;
+            color: var(--text-soft);
+            transition: all 160ms;
+            white-space: nowrap;
+        }
+
+        .sort-toggle button.active {
+            background: var(--accent);
+            color: #fff;
+        }
+
+        .modal-content::after {
+            content: '⋰';
+            position: absolute;
+            bottom: 4px;
+            right: 8px;
+            font-size: 16px;
+            color: var(--text-muted);
+            pointer-events: none;
+            opacity: 0.5;
+        }
+
+        @media (max-width: 768px) {
+            .modal-content {
+                width: 95%;
+                max-width: 95%;
+                min-width: 280px;
+                max-height: 85vh;
+                min-height: 300px;
+                height: 70vh;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <div id="controls" class="expanded">
+            <!-- Minimal collapsed view (shown when collapsed) -->
+            <div id="controls-collapsed">
+                <div id="breadcrumb-mini"></div>
+                <div class="version-mini">v1.3.2</div>
+                <button id="toggleControls" onclick="toggleControls()">▲</button>
+            </div>
+
+            <!-- Full expanded view (shown when expanded) -->
+            <div id="controls-expanded">
+                <div class="badge"><div class="badge-dot"></div> Second Brain</div>
+                <h1>BookStack Knowledge Graph <span style="font-size: 11px; color: var(--text-muted); font-weight: 400;">v1.3.2</span></h1>
+                <div id="breadcrumb" style="margin: 12px 0; font-size: 13px; color: var(--text-soft);"></div>
+                <div class="controls-row">
+                    <button onclick="loadAndVisualize()">Reload Visualization</button>
+                    <button id="backButton" onclick="navigateBack()" style="display:none;">← Back</button>
+                    <button id="forwardButton" onclick="navigateForward()" style="display:none;">Forward →</button>
+                    <button onclick="openKeywordModal()" title="Filter by keywords">🔍 Keywords</button>
+                    <button onclick="clearKeywordFilters()" title="Clear all keyword filters">✕ Clear Filters</button>
+                    <button onclick="unpinAllNodes()" title="Unpin all nodes">📌 Unpin All</button>
+                </div>
+                <div id="status"></div>
+            </div>
+        </div>
+
+        <svg id="visualization"></svg>
+
+        <div class="zoom-controls">
+            <div class="zoom-btn" onclick="zoomIn()" title="Zoom In">+</div>
+            <div class="zoom-btn" onclick="zoomOut()" title="Zoom Out">−</div>
+            <div class="zoom-btn" onclick="resetZoom()" title="Reset Zoom">⊙</div>
+        </div>
+
+        <!-- Keyword Filter Modal -->
+        <div id="keywordModal" class="modal" style="display:none;">
+            <div class="modal-backdrop" onclick="closeKeywordModal()"></div>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Filter by Keywords <span style="font-size: 9px; color: var(--text-muted); font-weight: 400;">(close to apply)</span></h3>
+                    <div class="sort-toggle">
+                        <button id="sortFreq" class="active" onclick="setSortMode('frequency')">By Count</button>
+                        <button id="sortAlpha" onclick="setSortMode('alphabetical')">A-Z</button>
+                    </div>
+                    <button onclick="closeKeywordModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <div id="keywordList" class="keyword-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /*
+         * BookStack Knowledge Graph - Second Brain Visualization
+         *
+         * DEVELOPMENT GUIDELINES
+         * ======================
+         *
+         * When making changes to this file:
+         *
+         * 1. UPDATE VERSION NUMBER (Semantic Versioning: MAJOR.MINOR.PATCH)
+         *    - Change VERSION constant below
+         *    - Update all v1.x.x references in HTML (search and replace)
+         *    - MAJOR: Breaking changes or major new features
+         *    - MINOR: New features, backward compatible
+         *    - PATCH: Bug fixes, small improvements
+         *
+         * 2. UPDATE README.md CHANGELOG
+         *    - Add new version section at the top of Changelog
+         *    - Include date (YYYY-MM-DD format)
+         *    - List all changes with brief descriptions
+         *    - Use bold for feature names: **Feature name**: Description
+         *
+         * 3. UPDATE README.md FEATURES (if needed)
+         *    - Add new features to the Features list
+         *    - Update Usage/Tutorial sections if UI/UX changed
+         *
+         * 4. TEST BEFORE COMMIT
+         *    - Test on desktop browser
+         *    - Test on mobile if UI changed
+         *    - Verify localStorage persistence works
+         *    - Check keyword filtering behavior
+         *
+         * Current Version: 1.3.2
+         */
+
+        const VERSION = "1.3.2";
+
+        let svg, width, height, simulation, zoomBehavior, gMain, currentZoom;
+
+        // State management
+        let currentView = 'shelves'; // 'shelves', 'books', 'chapters', 'pages'
+        let currentShelf = null;
+        let currentBook = null;
+        let currentChapter = null;
+        let allShelvesData = [];
+        let allBooksData = [];
+        let navigationHistory = [];
+        let navigationIndex = -1;
+
+        // Keyword filtering
+        let currentGraphData = null;
+        let selectedKeywords = new Map(); // keyword -> color (active filters)
+        let tempSelectedKeywords = new Map(); // keyword -> color (temporary state in modal)
+        let linkElements = null;
+
+        // Default color palette for keywords
+        const keywordColors = [
+            '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16',
+            '#22c55e', '#10b981', '#14b8a6', '#06b6d4', '#0ea5e9',
+            '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef',
+            '#ec4899', '#f43f5e'
+        ];
+        let colorIndex = 0;
+
+        // Controls collapse/expand state
+        let controlsExpanded = true;
+
+        // Keyword sort mode
+        let keywordSortMode = 'frequency'; // 'frequency' or 'alphabetical'
+
+        // Position persistence functions
+        function getViewKey() {
+            // Generate unique key for current view
+            if (currentView === 'books') {
+                return 'books';
+            } else if (currentView === 'chapters' && currentBook) {
+                return `book-${currentBook.id}-chapters`;
+            } else if (currentView === 'pages' && currentChapter) {
+                return `chapter-${currentChapter.id}-pages`;
+            }
+            return 'default';
+        }
+
+        function loadNodePositions() {
+            const key = getViewKey();
+            const stored = localStorage.getItem(`nodePositions-${key}`);
+            return stored ? JSON.parse(stored) : {};
+        }
+
+        function saveNodePosition(nodeId, x, y) {
+            const key = getViewKey();
+            const positions = loadNodePositions();
+            positions[nodeId] = { x, y };
+            localStorage.setItem(`nodePositions-${key}`, JSON.stringify(positions));
+        }
+
+        function removeNodePosition(nodeId) {
+            const key = getViewKey();
+            const positions = loadNodePositions();
+            delete positions[nodeId];
+            localStorage.setItem(`nodePositions-${key}`, JSON.stringify(positions));
+        }
+
+        function clearNodePositions() {
+            const key = getViewKey();
+            localStorage.removeItem(`nodePositions-${key}`);
+        }
+
+        // Keyword panel functions
+        // Legacy function - now opens modal instead
+        function toggleKeywordPanel() {
+            openKeywordModal();
+        }
+
+        function buildKeywordList() {
+            if (!currentGraphData) return;
+
+            const keywordList = document.getElementById('keywordList');
+            keywordList.innerHTML = '';
+
+            // Collect all keywords from links and count their usage
+            const keywordCounts = new Map();
+            currentGraphData.links.forEach(link => {
+                link.themes.forEach(keyword => {
+                    keywordCounts.set(keyword, (keywordCounts.get(keyword) || 0) + 1);
+                });
+            });
+
+            // Sort based on selected mode
+            let sortedKeywords = Array.from(keywordCounts.entries());
+            if (keywordSortMode === 'frequency') {
+                sortedKeywords.sort((a, b) => b[1] - a[1]); // Descending by count
+            } else {
+                sortedKeywords.sort((a, b) => a[0].localeCompare(b[0])); // Alphabetical
+            }
+
+            // Create keyword items
+            sortedKeywords.forEach(([keyword, count], index) => {
+                const item = document.createElement('div');
+                item.className = 'keyword-item';
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'keyword-checkbox';
+                checkbox.id = `keyword-${keyword}`;
+                checkbox.checked = tempSelectedKeywords.has(keyword);
+                checkbox.onchange = () => toggleKeyword(keyword);
+
+                const colorPicker = document.createElement('input');
+                colorPicker.type = 'color';
+                colorPicker.className = 'keyword-color';
+                // Use existing color if selected, otherwise use deterministic color from palette
+                colorPicker.value = tempSelectedKeywords.get(keyword) || keywordColors[index % keywordColors.length];
+                colorPicker.onchange = (e) => updateKeywordColor(keyword, e.target.value);
+
+                const label = document.createElement('label');
+                label.className = 'keyword-label';
+                label.htmlFor = `keyword-${keyword}`;
+                label.textContent = keyword;
+                label.onclick = () => checkbox.click();
+
+                const countBadge = document.createElement('span');
+                countBadge.className = 'keyword-count';
+                countBadge.textContent = count;
+
+                item.appendChild(checkbox);
+                item.appendChild(colorPicker);
+                item.appendChild(label);
+                item.appendChild(countBadge);
+
+                keywordList.appendChild(item);
+            });
+        }
+
+        function toggleKeyword(keyword) {
+            const checkbox = document.getElementById(`keyword-${keyword}`);
+            const colorPicker = checkbox.parentElement.querySelector('.keyword-color');
+
+            if (checkbox.checked) {
+                // Add keyword with current color to temporary state
+                tempSelectedKeywords.set(keyword, colorPicker.value);
+            } else {
+                // Remove keyword from temporary state
+                tempSelectedKeywords.delete(keyword);
+            }
+            // Don't update graph yet - wait until modal closes
+        }
+
+        function updateKeywordColor(keyword, color) {
+            // Update color in temporary state if keyword is selected
+            // If not selected, the color picker value is stored in the DOM
+            // and will be used when the user checks the keyword
+            if (tempSelectedKeywords.has(keyword)) {
+                tempSelectedKeywords.set(keyword, color);
+            }
+            // Don't update graph yet - wait until modal closes
+        }
+
+        function updateLinkColors() {
+            // Re-select all link elements from the DOM to ensure we have fresh references
+            const links = d3.selectAll("path.link");
+            const linkLabels = d3.selectAll("text.link-label");
+
+            if (links.empty()) {
+                console.log('updateLinkColors: No links found in DOM');
+                return;
+            }
+
+            console.log('updateLinkColors: Processing', links.size(), 'links');
+            console.log('updateLinkColors: selectedKeywords =', Array.from(selectedKeywords.entries()));
+
+            let matchCount = 0;
+            let hideCount = 0;
+
+            // If no keywords selected, reset all to default and return early
+            if (selectedKeywords.size === 0) {
+                console.log('updateLinkColors: No filters active, showing all links in default style');
+                links.each(function(d) {
+                    const link = d3.select(this);
+                    link.style('stroke', '#38bdf8')
+                        .style('stroke-opacity', 0.4)
+                        .style('stroke-width', Math.min(d.themes.length * 2, 10) + 'px');
+                });
+                linkLabels.each(function() {
+                    d3.select(this).style('opacity', 1.0);
+                });
+                console.log('updateLinkColors: All links visible with default styling');
+                return;
+            }
+
+            // Apply keyword filtering
+            links.each(function(d, i) {
+                const link = d3.select(this);
+                let color = '#38bdf8'; // Default accent color
+                let opacity = 0.4;
+                let strokeWidth = Math.min(d.themes.length * 2, 10);
+                let labelOpacity = 1.0;
+
+                // Check if this link contains any selected keywords
+                const matchedKeywords = d.themes.filter(theme => selectedKeywords.has(theme));
+
+                if (matchedKeywords.length > 0) {
+                    // Use the color of the first matched keyword
+                    color = selectedKeywords.get(matchedKeywords[0]);
+                    opacity = 1.0;
+                    strokeWidth = Math.min(d.themes.length * 2 + 4, 14);
+                    labelOpacity = 1.0;
+                    matchCount++;
+                } else {
+                    // Hide links that don't match completely
+                    opacity = 0;
+                    strokeWidth = 1;
+                    labelOpacity = 0;
+                    hideCount++;
+                }
+
+                // Force immediate update - use style instead of attr
+                link.style('stroke', color)
+                    .style('stroke-opacity', opacity)
+                    .style('stroke-width', strokeWidth + 'px');
+
+                // Update corresponding link label visibility
+                if (!linkLabels.empty()) {
+                    d3.select(linkLabels.nodes()[i])
+                        .style('opacity', labelOpacity);
+                }
+            });
+
+            console.log(`updateLinkColors: Complete - ${matchCount} matched, ${hideCount} hidden`);
+        }
+
+        // Controls collapse/expand functions
+        function toggleControls() {
+            controlsExpanded = !controlsExpanded;
+            const controls = document.getElementById('controls');
+            const button = document.getElementById('toggleControls');
+
+            if (controlsExpanded) {
+                controls.classList.remove('collapsed');
+                controls.classList.add('expanded');
+                button.textContent = '▲';
+            } else {
+                controls.classList.add('collapsed');
+                controls.classList.remove('expanded');
+                button.textContent = '▼';
+            }
+
+            // Save state
+            localStorage.setItem('controlsExpanded', controlsExpanded);
+
+            // Trigger resize to update visualization
+            handleResize();
+        }
+
+        function loadControlsState() {
+            const saved = localStorage.getItem('controlsExpanded');
+            if (saved !== null) {
+                controlsExpanded = saved === 'true';
+                const controls = document.getElementById('controls');
+                const button = document.getElementById('toggleControls');
+
+                if (controlsExpanded) {
+                    controls.classList.add('expanded');
+                    controls.classList.remove('collapsed');
+                    button.textContent = '▲';
+                } else {
+                    controls.classList.add('collapsed');
+                    controls.classList.remove('expanded');
+                    button.textContent = '▼';
+                }
+            }
+        }
+
+        // Keyword persistence functions
+        function saveKeywordSelections() {
+            const selectionsArray = Array.from(selectedKeywords.entries());
+            localStorage.setItem('selectedKeywords', JSON.stringify(selectionsArray));
+            console.log('Saved keyword selections:', selectionsArray);
+        }
+
+        function loadKeywordSelections() {
+            const saved = localStorage.getItem('selectedKeywords');
+            if (saved) {
+                try {
+                    const selectionsArray = JSON.parse(saved);
+                    selectedKeywords = new Map(selectionsArray);
+                    console.log('Loaded keyword selections:', selectionsArray);
+                } catch (e) {
+                    console.error('Error loading keyword selections:', e);
+                    selectedKeywords = new Map();
+                }
+            }
+        }
+
+        // Keyword modal functions
+        function openKeywordModal() {
+            // Copy current selections to temporary state
+            tempSelectedKeywords = new Map(selectedKeywords);
+            console.log('Opening modal with selections:', Array.from(selectedKeywords.entries()));
+            buildKeywordList();
+            document.getElementById('keywordModal').style.display = 'flex';
+        }
+
+        function closeKeywordModal() {
+            // Apply temporary selections to active selections
+            selectedKeywords = new Map(tempSelectedKeywords);
+            console.log('Closing modal. Selected keywords:', Array.from(selectedKeywords.entries()));
+            // Save to localStorage
+            saveKeywordSelections();
+            // Update the graph with new selections
+            updateLinkColors();
+            document.getElementById('keywordModal').style.display = 'none';
+        }
+
+        function clearKeywordFilters() {
+            // Clear all keyword selections
+            selectedKeywords = new Map();
+            tempSelectedKeywords = new Map();
+            console.log('Cleared all keyword filters');
+            // Save empty state to localStorage
+            saveKeywordSelections();
+            // Update graph to show all links
+            updateLinkColors();
+        }
+
+        function setSortMode(mode) {
+            keywordSortMode = mode;
+
+            // Update button states
+            document.getElementById('sortFreq').classList.toggle('active', mode === 'frequency');
+            document.getElementById('sortAlpha').classList.toggle('active', mode === 'alphabetical');
+
+            // Rebuild list with new sort order
+            buildKeywordList();
+        }
+
+        // Initialize SVG
+        function initSVG() {
+            svg = d3.select("#visualization");
+            const container = document.getElementById("visualization");
+            width = container.clientWidth;
+            height = container.clientHeight;
+
+            svg.attr("width", width).attr("height", height);
+            svg.attr("viewBox", `0 0 ${width} ${height}`);
+            svg.attr("preserveAspectRatio", "xMidYMid meet");
+
+            // Define arrow marker
+            svg.append("defs").append("marker")
+                .attr("id", "arrowhead")
+                .attr("viewBox", "0 -5 10 10")
+                .attr("refX", 20)
+                .attr("refY", 0)
+                .attr("markerWidth", 6)
+                .attr("markerHeight", 6)
+                .attr("orient", "auto")
+                .append("path")
+                .attr("d", "M0,-5L10,0L0,5")
+                .attr("fill", "#38bdf8");
+
+            // Create main group for zoom/pan
+            gMain = svg.append("g").attr("class", "main-group");
+
+            // Setup zoom behavior
+            zoomBehavior = d3.zoom()
+                .scaleExtent([0.1, 10])
+                .on("zoom", (event) => {
+                    gMain.attr("transform", event.transform);
+                    currentZoom = event.transform;
+                });
+
+            svg.call(zoomBehavior);
+        }
+
+        // Zoom control functions
+        function zoomIn() {
+            svg.transition().duration(300).call(zoomBehavior.scaleBy, 1.3);
+        }
+
+        function zoomOut() {
+            svg.transition().duration(300).call(zoomBehavior.scaleBy, 0.7);
+        }
+
+        function resetZoom() {
+            svg.transition().duration(500).call(
+                zoomBehavior.transform,
+                d3.zoomIdentity.translate(0, 0).scale(1)
+            );
+        }
+
+        // Unpin all nodes
+        function unpinAllNodes() {
+            if (!simulation) return;
+
+            // Remove pinning from all nodes
+            simulation.nodes().forEach(node => {
+                node.fx = null;
+                node.fy = null;
+            });
+
+            // Clear all saved positions for this view
+            clearNodePositions();
+
+            // Remove visual indicators
+            gMain.selectAll(".node").classed("pinned", false);
+
+            // Restart simulation
+            simulation.alpha(0.3).restart();
+        }
+
+        // Handle window resize
+        function handleResize() {
+            const container = document.getElementById("visualization");
+            const newWidth = container.clientWidth;
+            const newHeight = container.clientHeight;
+
+            if (newWidth !== width || newHeight !== height) {
+                width = newWidth;
+                height = newHeight;
+
+                svg.attr("width", width).attr("height", height);
+                svg.attr("viewBox", `0 0 ${width} ${height}`);
+
+                // Update force simulation center
+                if (simulation) {
+                    simulation.force("center", d3.forceCenter(width / 2, height / 2));
+                    simulation.alpha(0.3).restart();
+                }
+            }
+        }
+
+        // Debounce resize handler
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(handleResize, 250);
+        });
+
+        // Handle orientation change on mobile
+        window.addEventListener('orientationchange', () => {
+            setTimeout(handleResize, 300);
+        });
+
+        // Navigation history management
+        function addToHistory(view, shelf, book, chapter) {
+            // Remove any forward history when navigating to a new location
+            navigationHistory = navigationHistory.slice(0, navigationIndex + 1);
+
+            // Add new history entry
+            navigationHistory.push({
+                view: view,
+                shelf: shelf,
+                book: book,
+                chapter: chapter
+            });
+            navigationIndex = navigationHistory.length - 1;
+
+            updateNavigationButtons();
+        }
+
+        function updateNavigationButtons() {
+            const backButton = document.getElementById('backButton');
+            const forwardButton = document.getElementById('forwardButton');
+
+            // Show back button if we can go back
+            backButton.style.display = navigationIndex > 0 ? 'inline-block' : 'none';
+
+            // Show forward button if we can go forward
+            forwardButton.style.display = navigationIndex < navigationHistory.length - 1 ? 'inline-block' : 'none';
+        }
+
+        // Update breadcrumb
+        function updateBreadcrumb() {
+            const breadcrumb = document.getElementById('breadcrumb');
+            const breadcrumbMini = document.getElementById('breadcrumb-mini');
+
+            let breadcrumbText = '';
+            if (currentView === 'shelves') {
+                breadcrumbText = '📚 All Shelves';
+            } else if (currentView === 'books') {
+                if (currentShelf) {
+                    breadcrumbText = `📚 Shelves > <strong>${currentShelf.name}</strong>`;
+                } else {
+                    breadcrumbText = '📚 All Books';
+                }
+            } else if (currentView === 'chapters') {
+                let path = '📚 ';
+                if (currentShelf) path += `Shelves > ${currentShelf.name} > `;
+                else path += 'Books > ';
+                breadcrumbText = path + `<strong>${currentBook.name}</strong>`;
+            } else if (currentView === 'pages') {
+                let path = '📚 ';
+                if (currentShelf) path += `Shelves > ${currentShelf.name} > `;
+                else path += 'Books > ';
+                path += `${currentBook.name} > `;
+                breadcrumbText = path + `<strong>${currentChapter.name}</strong>`;
+            }
+
+            breadcrumb.innerHTML = breadcrumbText;
+            breadcrumbMini.innerHTML = breadcrumbText; // Update mini version too
+
+            updateNavigationButtons();
+        }
+
+        // Navigate back
+        function navigateBack() {
+            if (navigationIndex > 0) {
+                navigationIndex--;
+                const historyEntry = navigationHistory[navigationIndex];
+
+                currentView = historyEntry.view;
+                currentShelf = historyEntry.shelf;
+                currentBook = historyEntry.book;
+                currentChapter = historyEntry.chapter;
+
+                // Render the view without adding to history
+                if (currentView === 'shelves') {
+                    showShelves(false);
+                } else if (currentView === 'books') {
+                    showBooks(currentShelf, false);
+                } else if (currentView === 'chapters') {
+                    showChapters(currentBook, false);
+                } else if (currentView === 'pages') {
+                    showPages(currentChapter, false);
+                }
+            }
+        }
+
+        // Navigate forward
+        function navigateForward() {
+            if (navigationIndex < navigationHistory.length - 1) {
+                navigationIndex++;
+                const historyEntry = navigationHistory[navigationIndex];
+
+                currentView = historyEntry.view;
+                currentShelf = historyEntry.shelf;
+                currentBook = historyEntry.book;
+                currentChapter = historyEntry.chapter;
+
+                // Render the view without adding to history
+                if (currentView === 'shelves') {
+                    showShelves(false);
+                } else if (currentView === 'books') {
+                    showBooks(currentShelf, false);
+                } else if (currentView === 'chapters') {
+                    showChapters(currentBook, false);
+                } else if (currentView === 'pages') {
+                    showPages(currentChapter, false);
+                }
+            }
+        }
+
+        // Extract nouns from text (simple approach)
+        function extractNouns(text) {
+            if (!text) return [];
+
+            // Convert to lowercase and remove special characters
+            const cleaned = text.toLowerCase().replace(/[^a-z\s]/g, ' ');
+            const words = cleaned.split(/\s+/).filter(w => w.length > 3);
+
+            // Common words to exclude
+            const stopWords = new Set(['that', 'this', 'with', 'from', 'have', 'will', 'your', 'their', 'what', 'when', 'where', 'which', 'while', 'about', 'would', 'there', 'these', 'those', 'could', 'should']);
+
+            // Filter out stop words and return unique nouns
+            return [...new Set(words.filter(w => !stopWords.has(w)))];
+        }
+
+        // Fetch shelves from BookStack API via proxy
+        async function fetchShelves() {
+            try {
+                const response = await fetch('bookstack_proxy.php?endpoint=shelves&count=500');
+                if (!response.ok) {
+                    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+                }
+                const data = await response.json();
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                return data.data || [];
+            } catch (error) {
+                throw new Error(`Failed to fetch shelves: ${error.message}`);
+            }
+        }
+
+        // Fetch books from BookStack API via proxy
+        async function fetchBooks() {
+            try {
+                const response = await fetch('bookstack_proxy.php?endpoint=books&count=500');
+                if (!response.ok) {
+                    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+                }
+                const data = await response.json();
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                return data.data || [];
+            } catch (error) {
+                throw new Error(`Failed to fetch books: ${error.message}`);
+            }
+        }
+
+        // Fetch shelf details with books
+        async function fetchShelfDetails(shelfId) {
+            try {
+                const response = await fetch(`bookstack_proxy.php?endpoint=shelves/${shelfId}`);
+                if (!response.ok) {
+                    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+                }
+                const data = await response.json();
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                return data;
+            } catch (error) {
+                throw new Error(`Failed to fetch shelf details: ${error.message}`);
+            }
+        }
+
+        // Fetch book details with chapters and pages
+        async function fetchBookDetails(bookId) {
+            try {
+                const response = await fetch(`bookstack_proxy.php?endpoint=books/${bookId}`);
+                if (!response.ok) {
+                    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+                }
+                const data = await response.json();
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                return data;
+            } catch (error) {
+                throw new Error(`Failed to fetch book details: ${error.message}`);
+            }
+        }
+
+        // Fetch individual page details including content
+        async function fetchPageDetails(pageId) {
+            try {
+                const response = await fetch(`bookstack_proxy.php?endpoint=pages/${pageId}`);
+                if (!response.ok) {
+                    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+                }
+                const data = await response.json();
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                return data;
+            } catch (error) {
+                throw new Error(`Failed to fetch page details: ${error.message}`);
+            }
+        }
+
+        // Process items (books, chapters, or pages) and create graph data
+        function processItems(items, type) {
+            const nodes = [];
+            const links = [];
+            const themeMap = new Map(); // theme -> [item indices]
+
+            items.forEach((item, index) => {
+                const text = `${item.name} ${item.description || ''}`;
+                const themes = extractNouns(text);
+
+                nodes.push({
+                    id: item.id,
+                    name: item.name,
+                    description: item.description,
+                    themes: themes,
+                    type: type,
+                    data: item
+                });
+
+                // Map themes to items
+                themes.forEach(theme => {
+                    if (!themeMap.has(theme)) {
+                        themeMap.set(theme, []);
+                    }
+                    themeMap.get(theme).push(index);
+                });
+            });
+
+            // Create links between items that share themes
+            themeMap.forEach((itemIndices, theme) => {
+                if (itemIndices.length > 1) {
+                    // Connect all items that share this theme
+                    for (let i = 0; i < itemIndices.length; i++) {
+                        for (let j = i + 1; j < itemIndices.length; j++) {
+                            const source = nodes[itemIndices[i]].id;
+                            const target = nodes[itemIndices[j]].id;
+
+                            // Check if link already exists
+                            const existing = links.find(l =>
+                                (l.source === source && l.target === target) ||
+                                (l.source === target && l.target === source)
+                            );
+
+                            if (existing) {
+                                existing.themes.push(theme);
+                            } else {
+                                links.push({
+                                    source: source,
+                                    target: target,
+                                    themes: [theme]
+                                });
+                            }
+                        }
+                    }
+                }
+            });
+
+            return { nodes, links };
+        }
+
+        // Visualize the graph
+        function visualize(graphData) {
+            // Store current graph data for keyword filtering
+            currentGraphData = graphData;
+
+            // Clear existing visualization but keep zoom setup
+            if (gMain) {
+                gMain.selectAll("*").remove();
+            } else {
+                svg.selectAll("*").remove();
+                initSVG();
+            }
+
+            const { nodes, links } = graphData;
+
+            // Load saved positions and apply them to nodes
+            const savedPositions = loadNodePositions();
+            nodes.forEach(node => {
+                const saved = savedPositions[node.id];
+                if (saved) {
+                    // Apply saved position and pin the node
+                    node.fx = saved.x;
+                    node.fy = saved.y;
+                    node.x = saved.x;
+                    node.y = saved.y;
+                }
+            });
+
+            // Node size based on type
+            function getNodeSize(d) {
+                const isMobile = width < 768;
+                const multiplier = isMobile ? 0.7 : 1;
+                const baseSize = d.themes.length * 1.5 * multiplier;
+
+                if (d.type === 'book') return (40 + baseSize) * multiplier;
+                if (d.type === 'chapter') return (25 + baseSize) * multiplier;
+                if (d.type === 'page') return (15 + baseSize) * multiplier;
+                return (30 + baseSize) * multiplier;
+            }
+
+            // Adjust force simulation based on screen size
+            const isMobile = width < 768;
+            const linkDistance = isMobile ? 80 : 150;
+            const chargeStrength = isMobile ? -150 : -300;
+
+            // Create force simulation
+            simulation = d3.forceSimulation(nodes)
+                .force("link", d3.forceLink(links).id(d => d.id).distance(linkDistance))
+                .force("charge", d3.forceManyBody().strength(chargeStrength))
+                .force("center", d3.forceCenter(width / 2, height / 2))
+                .force("collision", d3.forceCollide().radius(d => getNodeSize(d) + 10));
+
+            // Create links (arrows)
+            const link = gMain.append("g")
+                .selectAll("path")
+                .data(links)
+                .enter()
+                .append("path")
+                .attr("class", "link")
+                .attr("stroke-width", d => Math.min(d.themes.length * 2, 10));
+
+            // Note: We re-select links from DOM in updateLinkColors() for reliability
+            // linkElements = link; // No longer used
+
+            // Create link labels
+            const linkLabel = gMain.append("g")
+                .selectAll("text")
+                .data(links)
+                .enter()
+                .append("text")
+                .attr("class", "link-label")
+                .text(d => d.themes.slice(0, 2).join(", ") + (d.themes.length > 2 ? "..." : ""));
+
+            // Create nodes (bubbles)
+            const node = gMain.append("g")
+                .selectAll("g")
+                .data(nodes)
+                .enter()
+                .append("g")
+                .attr("class", d => d.fx !== undefined && d.fy !== undefined ? "node pinned" : "node")
+                .style("cursor", "pointer")
+                .on("click", handleNodeClick)
+                .on("dblclick", unpinNode)
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended));
+
+            // Add circles to nodes - use theme-based colors
+            const colorScale = d3.scaleSequential(d3.interpolateCool)
+                .domain([0, nodes.length - 1]);
+
+            node.append("circle")
+                .attr("r", d => getNodeSize(d))
+                .attr("fill", (d, i) => colorScale(i))
+                .style("opacity", 0.85);
+
+            // Add text labels to nodes
+            node.append("text")
+                .attr("dy", 4)
+                .text(d => d.name.length > 20 ? d.name.substring(0, 20) + "..." : d.name)
+                .style("font-size", d => {
+                    if (d.type === 'book') return '13px';
+                    if (d.type === 'chapter') return '11px';
+                    return '10px';
+                });
+
+            // Add tooltips
+            node.append("title")
+                .text(d => `${d.name}\nType: ${d.type}\nThemes: ${d.themes.join(", ")}`);
+
+            // Update positions on simulation tick
+            simulation.on("tick", () => {
+                link.attr("d", d => {
+                    const dx = d.target.x - d.source.x;
+                    const dy = d.target.y - d.source.y;
+                    const dr = Math.sqrt(dx * dx + dy * dy);
+                    return `M${d.source.x},${d.source.y}A${dr},${dr} 0 0,1 ${d.target.x},${d.target.y}`;
+                });
+
+                linkLabel
+                    .attr("x", d => (d.source.x + d.target.x) / 2)
+                    .attr("y", d => (d.source.y + d.target.y) / 2);
+
+                node.attr("transform", d => `translate(${d.x},${d.y})`);
+            });
+
+            function dragstarted(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+
+            function dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+
+            function dragended(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                // Keep node pinned where it was released
+                // d.fx and d.fy remain set, preventing the node from moving
+                // Save position to localStorage
+                saveNodePosition(d.id, d.fx, d.fy);
+                // Mark as pinned visually
+                d3.select(event.sourceEvent.target.parentNode).classed("pinned", true);
+            }
+
+            function unpinNode(event, d) {
+                event.stopPropagation();
+                // Unpin the node so it can move freely again
+                d.fx = null;
+                d.fy = null;
+                // Remove saved position from localStorage
+                removeNodePosition(d.id);
+                // Remove pinned visual indicator
+                d3.select(event.currentTarget).classed("pinned", false);
+                // Restart simulation to let it settle
+                if (simulation) {
+                    simulation.alpha(0.3).restart();
+                }
+            }
+
+            // Apply any existing keyword filters to new graph
+            updateLinkColors();
+        }
+
+        // Handle node click based on type
+        async function handleNodeClick(event, d) {
+            event.stopPropagation();
+
+            if (d.type === 'shelf') {
+                await showBooks(d.data);
+            } else if (d.type === 'book') {
+                await showChapters(d.data);
+            } else if (d.type === 'chapter') {
+                showPages(d.data);
+            } else if (d.type === 'page') {
+                // Open page in BookStack
+                let pageUrl = d.data.url;
+
+                // Fix malformed URLs (http// instead of http://)
+                if (pageUrl.startsWith('http//')) {
+                    pageUrl = pageUrl.replace('http//', 'http://');
+                } else if (pageUrl.startsWith('https//')) {
+                    pageUrl = pageUrl.replace('https//', 'https://');
+                }
+
+                // If URL already starts with http:// or https://, use it as-is
+                if (pageUrl.startsWith('http://') || pageUrl.startsWith('https://')) {
+                    window.open(pageUrl, '_blank');
+                } else {
+                    // Otherwise, prepend the base URL from config
+                    window.open(`${CLIENT_CONFIG.bookstackBaseUrl}${pageUrl}`, '_blank');
+                }
+            }
+        }
+
+        // Show shelves view
+        function showShelves(addHistory = true) {
+            currentView = 'shelves';
+            currentShelf = null;
+            currentBook = null;
+            currentChapter = null;
+
+            if (addHistory) {
+                addToHistory('shelves', null, null, null);
+            }
+
+            updateBreadcrumb();
+
+            const status = document.getElementById("status");
+            status.innerHTML = `<span class="success">Showing ${allShelvesData.length} shelves. Click to explore, drag to pin, double-click to unpin.</span>`;
+
+            const graphData = processItems(allShelvesData, 'shelf');
+            visualize(graphData);
+        }
+
+        // Show books view
+        async function showBooks(shelf, addHistory = true) {
+            currentView = 'books';
+            currentShelf = shelf || null;
+            currentBook = null;
+            currentChapter = null;
+
+            if (addHistory) {
+                addToHistory('books', currentShelf, null, null);
+            }
+
+            updateBreadcrumb();
+
+            const status = document.getElementById("status");
+
+            let books = [];
+            if (currentShelf) {
+                // Show books in this shelf
+                status.innerHTML = 'Loading books...';
+                try {
+                    const shelfDetails = await fetchShelfDetails(currentShelf.id);
+                    books = shelfDetails.books || [];
+                } catch (error) {
+                    status.innerHTML = `<span class="error">Error: ${error.message}</span>`;
+                    console.error(error);
+                    return;
+                }
+            } else {
+                // Show all books
+                books = allBooksData;
+            }
+
+            if (books.length === 0) {
+                status.innerHTML = `<span class="error">No books found</span>`;
+                return;
+            }
+
+            status.innerHTML = `<span class="success">Showing ${books.length} books. Click to explore, drag to pin, double-click to unpin.</span>`;
+
+            const graphData = processItems(books, 'book');
+            visualize(graphData);
+        }
+
+        // Show chapters for a book
+        async function showChapters(book, addHistory = true) {
+            currentView = 'chapters';
+            currentBook = book;
+            currentChapter = null;
+
+            if (addHistory) {
+                addToHistory('chapters', currentShelf, currentBook, null);
+            }
+
+            updateBreadcrumb();
+
+            const status = document.getElementById("status");
+            status.innerHTML = 'Loading chapters...';
+
+            try {
+                const bookDetails = await fetchBookDetails(book.id);
+                const chapters = (bookDetails.contents || []).filter(item => item.type === 'chapter');
+
+                if (chapters.length === 0) {
+                    status.innerHTML = `<span class="error">No chapters found in "${book.name}"</span>`;
+                    return;
+                }
+
+                status.innerHTML = `<span class="success">Showing ${chapters.length} chapters. Click to view pages, drag to pin, double-click to unpin.</span>`;
+
+                const graphData = processItems(chapters, 'chapter');
+                visualize(graphData);
+            } catch (error) {
+                status.innerHTML = `<span class="error">Error: ${error.message}</span>`;
+                console.error(error);
+            }
+        }
+
+        // Show pages for a chapter
+        function showPages(chapter, addHistory = true) {
+            currentView = 'pages';
+            currentChapter = chapter;
+
+            if (addHistory) {
+                addToHistory('pages', currentShelf, currentBook, currentChapter);
+            }
+
+            updateBreadcrumb();
+
+            const status = document.getElementById("status");
+
+            const pages = chapter.pages || [];
+
+            if (pages.length === 0) {
+                status.innerHTML = `<span class="error">No pages found in "${chapter.name}"</span>`;
+                return;
+            }
+
+            status.innerHTML = `<span class="success">Showing ${pages.length} pages. Click to open in BookStack.</span>`;
+
+            const graphData = processItems(pages, 'page');
+            visualize(graphData);
+        }
+
+        // Main function - implements fallback: shelves → books → chapters → pages
+        async function loadAndVisualize() {
+            const status = document.getElementById("status");
+            status.innerHTML = 'Loading data...';
+
+            try {
+                // Try to load shelves first
+                status.innerHTML = 'Loading shelves...';
+                const shelves = await fetchShelves();
+                allShelvesData = shelves;
+
+                // Also load all books for fallback
+                status.innerHTML = 'Loading books...';
+                const books = await fetchBooks();
+                allBooksData = books;
+
+                // Determine what to show based on hierarchy with fallback
+                if (shelves.length > 0) {
+                    // Show shelves if available
+                    currentView = 'shelves';
+                    updateBreadcrumb();
+                    status.innerHTML = `<span class="success">Found ${shelves.length} shelves and ${shelves.length} connections. Click to explore, drag to pin, double-click to unpin.</span>`;
+                    const graphData = processItems(shelves, 'shelf');
+                    visualize(graphData);
+                } else if (books.length > 0) {
+                    // Fall back to books if no shelves
+                    currentView = 'books';
+                    updateBreadcrumb();
+                    status.innerHTML = `<span class="success">Found ${books.length} books and ${books.length} connections. Click to explore, drag to pin, double-click to unpin.</span>`;
+                    const graphData = processItems(books, 'book');
+                    visualize(graphData);
+                } else {
+                    // No shelves or books
+                    status.innerHTML = `<span class="error">No content found. No shelves, books, chapters, or pages available.</span>`;
+                }
+            } catch (error) {
+                status.innerHTML = `<span class="error">Error: ${error.message}</span>`;
+                console.error(error);
+            }
+        }
+
+        // Initialize on load
+        initSVG();
+
+        // Auto-load visualization on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadControlsState();
+            loadKeywordSelections();
+            loadAndVisualize();
+
+            // Prevent double-tap zoom on mobile
+            let lastTouchEnd = 0;
+            document.addEventListener('touchend', (event) => {
+                const now = Date.now();
+                if (now - lastTouchEnd <= 300) {
+                    event.preventDefault();
+                }
+                lastTouchEnd = now;
+            }, false);
+        });
+    </script>
+</body>
+</html>
